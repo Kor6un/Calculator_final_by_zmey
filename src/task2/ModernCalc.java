@@ -2,130 +2,216 @@ package task2;
 
 import java.io.*;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 import java.util.Stack;
 import java.util.StringTokenizer;
 import static jdk.nashorn.internal.objects.Global.Infinity;
 
 public class ModernCalc {
+/*
+    Метод читает строки из документа input_2. txt в цикле,
+    каждую строку сразу обрабатывает и записывает в документ output_2.txt,
+ */
     public  void readWrite() throws IOException {
         FileReader fr;
 
         try {
             fr = new FileReader("src/task2/input_2.txt");
         } catch (FileNotFoundException e) {
-            throw  new FileNotFoundException("Файл не найден");
+            throw  new FileNotFoundException("File not found!");
         }
 
         BufferedReader br = new BufferedReader(fr);
-        String strIn, strOut;
+        String input, output;
         double result;
-        File file = new File("src/task2/output_2.txt");
-        FileWriter fw;
+
+     //   File outputFile = new File("src/task2/output_2.txt");
+        FileWriter fw ;
 
         try {
-            fw = new FileWriter(file);
+            fw = new FileWriter("src/task2/output_2.txt");
         } catch (IOException e) {
-            throw  new IOException("Ошибка записи в файл");
+            throw  new IOException("Error writing to file!");
         }
-        while ((strIn = br.readLine()) != null) {
+
+        String formatDouble;
+
+        while ( (input = br.readLine()) != null ){
             try {
-                strOut = strIn;
+                output = input;
 
-                strIn = convertToRPN(strIn);
-                result = calculate(strIn);
+                input = getPowPriority(input);
+                input = toRPN(input);
+                result = calculate(input);
 
-                String formatDouble;
+                Locale locale = new Locale("en", "UK");
+                DecimalFormatSymbols decimalFormatSymbols = new DecimalFormatSymbols(locale);
+
                 if (result%1 == 0) {
                     formatDouble = "##0";
                 } else {
                     formatDouble = "##0.00000";
                 }
-                DecimalFormat decimalFormat = new DecimalFormat(formatDouble);
+                DecimalFormat decimalFormat = new DecimalFormat(formatDouble, decimalFormatSymbols);
                 String format = decimalFormat.format(result);
 
-                if (result == Infinity || result == -Infinity) {
-                    strOut = "Деление на 0!";
-                    fw.write(strOut +"\n");
+                if (result == Infinity) {
+                    output = "Division by zero";
+                    fw.write(output +"\n");
                 } else {
-                    fw.write(strOut + "=" + format + "\n");
+                    fw.write(output + "=" + format + "\n");
                 }
-
                 fw.flush();
             } catch (Exception e) {
                 fw.write(e.getMessage() + "\n");
             }
         }
-        if (file.exists()){
-            file.deleteOnExit();
-            file = new File("src/task2/output_2.txt");
-            fw = new FileWriter(file,true);
-        }
         fw.close();
         br.close();
         fr.close();
     }
-    /**
-     * Преобразовать строку в обратную польскую нотацию
-     * @param stringIn Входная строка
-     * @return Выходная строка в обратной польской нотации
-     */
-    private static String convertToRPN(String stringIn) throws Exception {
 
-        String strStack = "";
-        String strOut = "";
-        char charIn, charTemp;
+/*
+    Добавляем в исходное выражение скобки для
+    определения приоритета возведения в степень
+*/
+    private static String getPowPriority(String input){
+        Stack<Character> stack = new Stack<>();
+        String output = "";
+        char cIn, cTemp;
+        for (int i = 0; i < input.length(); i++) {
+            cIn = input.charAt(i);
+            if (isOperation(cIn)) {
 
-        for (int i = 0; i < stringIn.length(); i++) {
-            charIn = stringIn.charAt(i);
-            if (isOperation(charIn)) {
-                if (strStack.length() > 0) {
-                    while (strStack.length() > 0) {
-                        //charTemp = strStack.substring(strStack.length()-1).charAt(0);
-                        charTemp = strStack.charAt(strStack.length() - 1);
-                        //TODO многоэтажные степени (3^2^2^2 = 3^16)
-                        if (isOperation(charTemp) &&
-                                (operationPrior(charIn) <= operationPrior(charTemp))) {
-                            strOut += " " + charTemp + " ";
-                            strStack = strStack.substring(0, strStack.length() - 1);
+                if (cIn == '^') {
+                    stack.push(cIn);
+                    output += cIn + "(";
+                } else {
+                    if (!stack.empty()) {
+                        cTemp = stack.peek();
+                        if ((cIn != cTemp && cTemp == '^')) {
+                            while (cTemp == '^') {
+                                output += ")";
+                                stack.pop();
+                                if (!stack.empty()){
+                                    cTemp = stack.peek();
+                                } else {
+                                    break;
+                                }
+                            }
+                            output += cIn;
+                            stack.push(cIn);
+
+                            stack.pop();
                         } else {
-                            strOut += " ";
+                            output += cIn;
+                        }
+                    } else {
+                        stack.push(cIn);
+                        output += cIn;
+                    }
+                }
+            } else {
+                output += cIn;
+                if (!stack.empty()){
+                    cTemp = stack.peek();
+                    if ((i == input.length() - 1 &&  cTemp == '^')) {
+                        while (cTemp == '^' ) {
+                            output += ")";
+                            stack.pop();
+                            if (!stack.empty()) {
+                                cTemp = stack.peek();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return  output;
+    }
+
+/*
+    Преобразовываем строку в обратную польскую нотацию
+*/
+    private static String toRPN(String input) throws Exception {
+        Stack<Character> stack = new Stack();
+        String output = "";
+        char cIn, cTemp;
+        boolean isSignOperation = false;
+        boolean isLineBeginning = true;
+
+        for (int i = 0; i < input.length(); i++) {
+            cIn = input.charAt(i);
+
+            if (isOperation(cIn)) {
+
+                //проверка на унарный минус и унарный плюс
+                if (((isSignOperation && cIn == '-' && !stack.empty()) || (isLineBeginning)) ||
+                        (isSignOperation && cIn == '+' && !stack.empty()) || (isLineBeginning)) {
+                    output += " " + cIn;
+                    continue;
+                }
+                isSignOperation = true;
+
+                if (!stack.empty()) {
+                    while (!stack.empty()) {
+                        cTemp = stack.peek();
+                        if (isOperation(cTemp) &&
+                                (priority(cIn) <= priority(cTemp))) {
+                            output += " " + cTemp + " ";
+                            stack.pop();
+                        } else {
+                            output += " ";
                             break;
                         }
                     }
                 }
-                strOut += " ";
-                strStack += charIn;
-            } else if ('(' == charIn) {
-                strStack += charIn;
-            } else if (')' == charIn) {
-                while (strStack.charAt(strStack.length() - 1) != '(') {
-                    strOut += " " + strStack.charAt(strStack.length() - 1);
-                    strStack = strStack.substring(0, strStack.length() - 1);
-                    if (strStack.length() == 0) {
-                        throw new Exception("Неверное количество открытых и закрытых скобок");
+                output += " ";
+                stack.push(cIn);
+            } else if (cIn == '(') {
+                stack.push(cIn);
+            } else if (')' == cIn) {
+                if (!stack.empty()) {
+                    if (stack.peek() == '(') {
+                        stack.pop();
+                        if (stack.empty() || stack.peek() == '(' ){
+                            continue;
+                        }
+                    } else {
+                        while ((stack.peek() != '(' && !stack.empty()) ) {
+                            output += " " + stack.pop();
+                        }
+                        stack.pop();
                     }
                 }
-                strStack = strStack.substring(0, strStack.length() - 1);
-
-                //TODO тута вклепать проверку на унарный минус
-
-            } else {
-                strOut += charIn;
+            }
+            else {
+                if(Character.isDigit(cIn)){
+                    isSignOperation = false;
+                    isLineBeginning = false;
+                }
+                output += cIn;
             }
         }
-        while (strStack.length() > 0) {
-            strOut += " " + strStack.substring(strStack.length() - 1);
-            strStack = strStack.substring(0, strStack.length() - 1);
+
+        while (!stack.empty()) {
+            if (stack.peek() == '(' ||
+                    stack.peek() == ')') {
+                throw new Exception("Brackets not matched");
+            }
+            output += " " + stack.pop();
         }
-        return  strOut;
+        return  output;
     }
 
-    /**
-     * Функция говорт, является ли текущий символ оператором, или частью числа
-     */
-    private static boolean isOperation(char c) {
-        switch (c) {
-            case '!':
+/*
+    Проверка, является ли текущий символ оператором
+*/
+    private static boolean isOperation(char cIn) {
+        switch (cIn) {
             case '-':
             case '+':
             case '*':
@@ -137,13 +223,11 @@ public class ModernCalc {
         return false;
     }
 
-    /**
-     * Возвращает приоритет операции
-     * @param op char
-     * @return byte
-     */
-    private static byte operationPrior(char op) {
-        switch (op) {
+/*
+    Метод возвращает приоритет операции
+*/
+    private static byte priority(char operation) {
+        switch (operation) {
             case '^':
                 return 3;
             case '*':
@@ -151,20 +235,17 @@ public class ModernCalc {
             case '%':
                 return 2;
         }
-        return 1; // Тут остается + и -
+        return 1;
     }
 
-    /**
-     * Считает выражение, записанное в обратной польской нотации
-     * @param sIn
-     * @return double result
-     */
+/*
+    Метод для расчета выражения, записанного в обратной польской нотации
+*/
     public static double calculate(String sIn) throws Exception {
-        if(sIn == "") {
+        if (sIn == ""){
             throw new Exception("");
         }
-
-        double rightOperand = 0, leftOperand = 0;
+        double dLeft = 0, dRight = 0;
         String strTmp;
         Stack<Double> stack = new Stack <>();
         StringTokenizer strToken = new StringTokenizer(sIn);
@@ -173,41 +254,43 @@ public class ModernCalc {
                 strTmp = strToken.nextToken().trim();
                 if (1 == strTmp.length() && isOperation(strTmp.charAt(0))) {
                     if (stack.size() < 2) {
-                        throw new Exception("Неверное количество данных в стеке для операции " + strTmp);
+                        throw new Exception("Invalid amount of data in the stack " +
+                                "to perform the operation " + strTmp);
                     }
-                    rightOperand = stack.pop();
-                    leftOperand = stack.pop();
+                    dLeft = stack.pop();
+                    dRight = stack.pop();
                     switch (strTmp.charAt(0)) {
                         case '+':
-                            leftOperand += rightOperand;
+                            dLeft += dRight;
                             break;
                         case '-':
-                            leftOperand -= rightOperand;
+                            dLeft = dRight - dLeft;
                             break;
                         case '/':
-                            leftOperand = leftOperand / rightOperand;
+                            dLeft = dRight / dLeft;
                             break;
                         case '*':
-                            leftOperand *= rightOperand;
+                            dLeft *= dRight;
                             break;
                         case '%':
-                            leftOperand *= rightOperand / 100;
+                            dLeft *= dRight / 100;
                             break;
                         case '^':
-                            leftOperand = Math.pow(leftOperand,rightOperand);
+                            dLeft = Math.pow(dRight,dLeft);
                             break;
                     }
-                    stack.push(leftOperand);
+                    stack.push(dLeft);
                 } else {
-                    leftOperand = Double.parseDouble(strTmp);
-                    stack.push(leftOperand);
+                    dLeft = Double.parseDouble(strTmp);
+                    stack.push(dLeft);
                 }
             } catch (Exception e) {
-                throw new Exception("Недопустимый символ в выражении");
+                throw new Exception("Wrong expression!");
             }
         }
         if (stack.size() > 1) {
-            throw new Exception("Количество операторов не соответствует количеству операндов");
+            throw new Exception("The number of operators" +
+                    "does not match the number of operands!");
         }
         return stack.pop();
     }
