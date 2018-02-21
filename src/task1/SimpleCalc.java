@@ -10,8 +10,8 @@ import static jdk.nashorn.internal.objects.Global.Infinity;
 
 public class SimpleCalc extends Exception {
 /*
-    Метод читает строки из документа input_2. txt в цикле,
-    каждую строку сразу обрабатывает и записывает в документ output_2.txt,
+    Метод читает строки из документа input_1. txt в цикле,
+    каждую строку сразу обрабатывает и записывает в документ output_1.txt,
 */
     public  void readWrite() throws IOException {
         FileReader fr;
